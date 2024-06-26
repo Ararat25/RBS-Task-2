@@ -11,6 +11,10 @@ import (
 	"sync"
 )
 
+const (
+	sizeConversionFactor = 1000
+)
+
 func main() {
 	rootPtr := flag.String("root", "", "Путь до нужной директории")
 	sortPtr := flag.String("sort", "ASK", "Параметр сортировки (возрастание/убывание)")
@@ -62,18 +66,18 @@ var nameSizes = [5]string{"b", "Kb", "Mb", "Gb", "Tb"}
 func formatSize(size int64) string {
 	s := float64(size)
 
-	if s < 1024 {
+	if s < sizeConversionFactor {
 		return fmt.Sprintf("%.2f B", s)
 	}
 
 	i := 0
 
-	for s >= 1024 && i < len(nameSizes)-1 {
-		s /= float64(1024)
+	for s >= sizeConversionFactor && i < len(nameSizes)-1 {
+		s /= float64(sizeConversionFactor)
 		i++
 	}
 
-	return fmt.Sprintf("%.2f %s", s, nameSizes[i])
+	return fmt.Sprintf("%.1f %s", s, nameSizes[i])
 }
 
 // determineSize определяет полный размер директории вместе с файлами
@@ -95,16 +99,8 @@ func determineSize(f string) (int64, error) {
 	return size, nil
 }
 
-func processFile(dirName string, file fs.DirEntry, propertiesFiles map[string]fileProperty, wg *sync.WaitGroup, mu *sync.Mutex) {
+func processFile(fPath string, fileInfo fs.FileInfo, dirName string, file fs.DirEntry, propertiesFiles map[string]fileProperty, wg *sync.WaitGroup, mu *sync.Mutex) {
 	defer wg.Done()
-
-	fPath := fmt.Sprintf("%s/%s", dirName, file.Name())
-
-	fileInfo, err := os.Stat(fPath)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
 
 	typeFile := "file"
 	size := fileInfo.Size()
@@ -121,8 +117,8 @@ func processFile(dirName string, file fs.DirEntry, propertiesFiles map[string]fi
 	}
 
 	mu.Lock()
+	defer mu.Unlock()
 	propertiesFiles[file.Name()] = fileProperty{fileType: typeFile, size: size}
-	mu.Unlock()
 }
 
 // getPropertiesFiles возвращает свойства файлов из заданной директории
@@ -141,7 +137,21 @@ func getPropertiesFiles(dirName string) (map[string]fileProperty, error) {
 
 	for _, file := range files {
 		wg.Add(1)
-		go processFile(dirName, file, propertiesFiles, &wg, &mu)
+
+		fPath := fmt.Sprintf("%s/%s", dirName, file.Name())
+
+		fileInfo, err := os.Stat(fPath)
+		if err != nil {
+			fmt.Println(err)
+			continue
+		}
+
+		if fileInfo.IsDir() {
+			go processFile(fPath, fileInfo, dirName, file, propertiesFiles, &wg, &mu)
+		} else {
+			processFile(fPath, fileInfo, dirName, file, propertiesFiles, &wg, &mu)
+		}
+		
 	}
 
 	wg.Wait()
