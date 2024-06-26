@@ -95,7 +95,7 @@ func determineSize(f string) (int64, error) {
 	return size, nil
 }
 
-func fff(dirName string, file fs.DirEntry, propertiesFiles map[string]fileProperty, wg *sync.WaitGroup, mu *sync.Mutex) {
+func processFile(dirName string, file fs.DirEntry, propertiesFiles map[string]fileProperty, wg *sync.WaitGroup, mu *sync.Mutex) {
 	defer wg.Done()
 
 	fPath := fmt.Sprintf("%s/%s", dirName, file.Name())
@@ -141,7 +141,7 @@ func getPropertiesFiles(dirName string) (map[string]fileProperty, error) {
 
 	for _, file := range files {
 		wg.Add(1)
-		go fff(dirName, file, propertiesFiles, &wg, &mu)
+		go processFile(dirName, file, propertiesFiles, &wg, &mu)
 	}
 
 	wg.Wait()
