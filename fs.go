@@ -79,13 +79,11 @@ func formatSize(size int64) string {
 func determineSize(f string) (int64, error) {
 	var size int64
 
-	err := filepath.Walk(f, func(_ string, info fs.FileInfo, err error) error {
+	err := filepath.Walk(f, func(path string, info fs.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
-		if !info.IsDir() {
-			size += info.Size()
-		}
+		size += info.Size()
 
 		return nil
 	})
@@ -120,13 +118,11 @@ func getPropertiesFiles(dirName string) (map[string]fileProperty, error) {
 		if file.IsDir() {
 			typeFile = "dir"
 
-			s, err := determineSize(fPath)
+			size, err = determineSize(fPath)
 			if err != nil {
 				fmt.Println(err)
 				continue
 			}
-
-			size += s
 		}
 
 		propertiesFiles[file.Name()] = fileProperty{fileType: typeFile, size: size}
