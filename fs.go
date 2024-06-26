@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sort"
 	"text/tabwriter"
+	"sync"
 )
 
 func main() {
@@ -94,6 +95,36 @@ func determineSize(f string) (int64, error) {
 	return size, nil
 }
 
+func fff(dirName string, file fs.DirEntry, propertiesFiles map[string]fileProperty, wg *sync.WaitGroup, mu *sync.Mutex) {
+	defer wg.Done()
+
+	fPath := fmt.Sprintf("%s/%s", dirName, file.Name())
+
+	fileInfo, err := os.Stat(fPath)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	typeFile := "file"
+	size := fileInfo.Size()
+
+	if file.IsDir() {
+		typeFile = "dir"
+
+		var err error
+		size, err = determineSize(fPath)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+	}
+
+	mu.Lock()
+	propertiesFiles[file.Name()] = fileProperty{fileType: typeFile, size: size}
+	mu.Unlock()
+}
+
 // getPropertiesFiles возвращает свойства файлов из заданной директории
 func getPropertiesFiles(dirName string) (map[string]fileProperty, error) {
 	files, err := os.ReadDir(dirName)
@@ -103,30 +134,17 @@ func getPropertiesFiles(dirName string) (map[string]fileProperty, error) {
 
 	propertiesFiles := map[string]fileProperty{}
 
+	var (
+		mu sync.Mutex
+		wg sync.WaitGroup
+	)
+
 	for _, file := range files {
-		fPath := fmt.Sprintf("%s/%s", dirName, file.Name())
-
-		fileInfo, err := os.Stat(fPath)
-		if err != nil {
-			fmt.Println(err)
-			continue
-		}
-
-		typeFile := "file"
-		size := fileInfo.Size()
-
-		if file.IsDir() {
-			typeFile = "dir"
-
-			size, err = determineSize(fPath)
-			if err != nil {
-				fmt.Println(err)
-				continue
-			}
-		}
-
-		propertiesFiles[file.Name()] = fileProperty{fileType: typeFile, size: size}
+		wg.Add(1)
+		go fff(dirName, file, propertiesFiles, &wg, &mu)
 	}
+
+	wg.Wait()
 
 	return propertiesFiles, nil
 }
@@ -141,6 +159,7 @@ type Pair struct {
 	Value fileProperty
 }
 
+// sortFiles cортирует мапу с размерами файлов по размеру
 func sortFiles(propertiesFiles map[string]fileProperty, sortMethod string) []Pair {
 	pairs := []Pair{}
 
